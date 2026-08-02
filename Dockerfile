@@ -1,50 +1,38 @@
+FROM python:3.11-slim-bookworm
 
-ARG PYTHON_VERSION=3.11-slim-bullseye
-FROM python:${PYTHON_VERSION}
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/home/app/.local/bin:${PATH}"
 
-# Upgrade pip
-RUN pip install --upgrade pip
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       build-essential \
+       curl \
+       gcc \
+       libcairo2 \
+       libjpeg62-turbo \
+       libpq-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system app \
+    && useradd --system --gid app --create-home app
 
-# Set Python-related environment variables
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
-
-# Install os dependencies for our mini vm
-RUN apt-get update && apt-get install -y \
-    # for postgres
-    libpq-dev \
-    # for Pillow
-    libjpeg-dev \
-    # for CairoSVG
-    libcairo2 \
-    # other
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
-
-# Set the working directory to that same code directory
 WORKDIR /app
 
-# Copy the requirements file into the container
-COPY requirements.txt .
+COPY requirements.txt ./
+RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && python -m pip install --no-cache-dir --requirement requirements.txt
 
-# copy the project code into the container's working directory
-COPY . .
+COPY --chown=app:app . .
+RUN chmod +x /app/docker-entrypoint.sh \
+    && mkdir -p /app/media /app/static \
+    && chown -R app:app /app
 
-# Install the Python project requirements
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the project code into the container's working directory
-COPY . .
-COPY .env /app/.env
+USER app
 
 EXPOSE 8000
 
-# Collect static files
-RUN python manage.py collectstatic --noinput
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "--threads", "2", "--timeout", "120", "CORE.wsgi:application"]
 
-# Start Gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "myproject.wsgi:application", "--workers", "3"]
-
-# ENTRYPOINT ["/app/docker-entrypoint.sh"]
-
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=5 \
+  CMD curl --fail --silent http://127.0.0.1:8000/ >/dev/null || exit 1

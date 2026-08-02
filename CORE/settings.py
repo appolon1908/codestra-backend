@@ -31,7 +31,11 @@ DEBUG = config("DEBUG", cast=bool, default=True)
 
 
 
-ALLOWED_HOSTS = ['127.0.0.1','37.27.208.104', '0.0.0.0', 'localhost', '37.27.25.208']
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in config("ALLOWED_HOSTS", default="localhost,127.0.0.1").split(",")
+    if host.strip()
+]
 
 
 # Application definition
@@ -87,10 +91,18 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'CORE.urls'
 
-CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='').split(',')
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in config("CORS_ALLOWED_ORIGINS", default="").split(",")
+    if origin.strip()
+]
 
 
-CSRF_TRUSTED_ORIGINS = ['http://localhost']
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in config("CSRF_TRUSTED_ORIGINS", default="http://localhost").split(",")
+    if origin.strip()
+]
 
 
 TEMPLATES = [
@@ -261,8 +273,8 @@ EMAIL_FROM = config("EMAIL_FROM", default="sales@codestra.co")
 
 #para cookies
 CORS_ALLOW_CREDENTIALS = True  # Permitir el envío de cookies
-SESSION_COOKIE_SECURE = False  # Solo para desarrollo local
-CSRF_COOKIE_SECURE = False  # S
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
 
 SESSION_COOKIE_SAMESITE = 'None'
 # settings.py

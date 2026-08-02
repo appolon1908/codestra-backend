@@ -60,6 +60,7 @@ five.globalrequest==99.1
 five.intid==2.0.0
 five.localsitemanager==4.0
 future==1.0.0
+gunicorn==23.0.0
 hyperlink==21.0.0
 icalendar==6.1.0
 idna==3.10

@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build production image
+        run: docker build --tag codestra-backend:ci .
+
+      - name: Run Django system checks
+        run: |
+          docker run --rm --entrypoint python \
+            --env SECRET_KEY=temporary-ci-key-not-for-production \
+            --env DEBUG=False \
+            --env POSTGRES_DB=codestra \
+            --env POSTGRES_USER=codestra \
+            --env POSTGRES_PASS=temporary \
+            --env PG_HOST=db \
+            --env PG_PORT=5432 \
+            codestra-backend:ci manage.py check
