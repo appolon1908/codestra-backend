@@ -11,8 +11,6 @@ app = Celery('CORE')
 
 app.config_from_object('django.conf:settings', namespace='CELERY')
 
-
-app.conf.broker_connection_retry_on_startup = True
 # Load task modules from all registered Django apps.
 app.autodiscover_tasks()
 
@@ -26,5 +24,9 @@ app.conf.beat_schedule = {
     'publish_scheduled_blogs': {
         'task': 'blog_app.tasks.publish_scheduled_blogs',
         'schedule': crontab(minute=0, hour='*'),
+    },
+    'send_event_reminders': {
+        'task': 'calendar_app.tasks.send_event_reminders',
+        'schedule': crontab(minute=0, hour=0),
     }
 }

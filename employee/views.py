@@ -3,174 +3,72 @@ from io import BytesIO
 
 from rest_framework import viewsets
 from rest_framework.response import Response
-from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.pagination import LimitOffsetPagination
-import requests
-from rest_framework.response import Response
-from django.http import HttpResponse, JsonResponse
+
 from django.core.files import File
+
 from drf_yasg.utils import swagger_auto_schema
-from .models import (
-            CareerApplication,
-            Employee, SocialMedia, 
-            Career, Requirement, 
-            Question, Option, Answer)
+
+
+from .models import Employee, SocialMedia
+
+
 from calendar_app.models import Event
 from calendar_app.serializers import EventSerializer
 from .serializers import (
-            CareerSerializer, 
-            AnswerSerializer,
             EmployeeSerializer, 
             SocialMediaSerializer, 
             CreateEmployeeSerializer, 
             CreateSocialMediaSerializer,
-            CareerApplicationSerializer,
-            CareerApplicationInputSerializer,
             )
+
 from cms.models import HeaderTitle
 from cms.serializers import HeaderTitleSerializer
+
+
+
 
 
 class EmployeeViewset(viewsets.ViewSet):
     serializer_class = EmployeeSerializer
     permission_classes = [AllowAny]
     pagination_class = LimitOffsetPagination
-    authentication_classes = [JWTAuthentication]
     
     def get_queryset(self):
         return Employee.objects.filter(is_active=True).order_by('-date_joined')
-
-   
-    def send_get_all_employees_to_odoo(self):
-        odoo_url = "http://crm.codestra.co/api/employees"
-        
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer tu_token_de_autenticacion'
-        }
-
-        try:
-            response = requests.get(odoo_url, headers=headers)
-            if response.status_code == 200:
-                return response.json()
-            else:
-                print(f"Error getting data from Odoo: {response.status_code} - {response.text}")
-                return None
-        except requests.exceptions.RequestException as e:
-            print(f"Error connecting to Odoo: {e}")
-            return None
-
-    
-    def send_get_employee_by_id_to_odoo(self, employee_id):
-        odoo_url = "http://crm.codestra.co/api/employees?id={employee_id}"
-        
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer tu_token_de_autenticacion'
-        }
-
-        try:
-            response = requests.get(odoo_url, headers=headers)
-            if response.status_code == 200:
-                return response.json()
-            else:
-                print(f"Error getting data from Odoo: {response.status_code} - {response.text}")
-                return None
-        except requests.exceptions.RequestException as e:
-            print(f"Error connecting to Odoo: {e}")
-            return None
-
-    
-    def send_calendar_event_to_odoo(self, employee_id):
-        odoo_url = "http://crm.codestra.co/api/calendar_events?employee_id={employee_id}"
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer tu_token_de_autenticacion'
-        }
-
-        try:
-            response = requests.get(odoo_url, headers=headers)
-            if response.status_code == 200:
-                return response.json()
-            else:
-                print(f"Error getting events from Odoo: {response.status_code} - {response.text}")
-                return None
-        except requests.exceptions.RequestException as e:
-            print(f"Error connecting to Odoo: {e}")
-            return None
-
-   
-    def send_add_calendar_event_to_odoo(self, event_data):
-        odoo_url = "https://crm.codestra.co/api/website/add-activity"
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer tu_token_de_autenticacion'
-        }
-
-        try:
-           
-            response = requests.post(odoo_url, headers=headers, json=event_data)
-
-          
-            if response.status_code == 200:
-                return response.json()
-            else:
-               
-                print(f"Error adding event to Odoo: {response.status_code} - {response.text}")
-                return response.json()  
-        except requests.exceptions.RequestException as e:
-          
-            print(f"Error connecting to Odoo: {e}")
-            return None
-        
     
     @swagger_auto_schema(
         operation_description="List all employees",
         operation_summary="List all employees",
         tags=["Employee"],
     )
+    # @action(methods=['GET'], detail=False, url_path='employees')
     def list(self, request):
         paginator = self.pagination_class()
-
+        employees = self.get_queryset()
         
-        odoo_response = self.send_get_all_employees_to_odoo()
+        result_page = paginator.paginate_queryset(employees, request)
 
-        # # Verificar si la respuesta de Odoo no está vacía
-        # if odoo_response:
-        #     # Si la respuesta es un diccionario, extraemos la lista de resultados (ajustar 'results' según corresponda)
-        #     if isinstance(odoo_response, dict):
-        #         odoo_response = odoo_response.get('results', [])  # Asegúrate de que 'results' sea la clave correcta
+        if result_page is not None:
+            serializer = EmployeeSerializer(result_page, many=True)
+            return paginator.get_paginated_response(serializer.data)
+        
+        return Response(EmployeeSerializer(blogs, many=True).data)
     
-        #     # Asegurarse de que odoo_response sea una lista
-        #     if isinstance(odoo_response, list):
-        #         result_page = paginator.paginate_queryset(odoo_response, request)
-
-        #         if result_page is not None:
-        #             return paginator.get_paginated_response(result_page)
-        
-                # Si no hay paginación, devuelve la respuesta tal cual
-        return Response(odoo_response, status=status.HTTP_200_OK)
-
-            # En caso de que no haya respuesta o algo haya fallado, se devuelve un error
-        # return Response({"error": "Error getting data from Odoo."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    # Endpoint de obtener un empleado por ID
+    
     @swagger_auto_schema(
         operation_description="Retrieve an employee by id",
         operation_summary="Retrieve an employee by id",
         tags=["Employee"],
     )
+    # @action(methods=['GET'], detail=False, url_path='employees/(?P<pk>[a-z,A-Z,0-9]+)')
     def retrieve(self, request, pk=None):
-        odoo_response = self.send_get_employee_by_id_to_odoo(pk)
-
-        if odoo_response:
-            return Response(odoo_response, status=status.HTTP_200_OK)
-        else:
-            return Response({"error": "Employee not found in Odoo."}, status=status.HTTP_404_NOT_FOUND)
-    
+        employee = Employee.objects.prefetch_related('social_media_profiles').filter(id=pk).first()
+        serializer = EmployeeSerializer(employee)
+        return Response(serializer.data)
     
     @swagger_auto_schema(
         operation_description="Create an employee record form",
@@ -178,6 +76,7 @@ class EmployeeViewset(viewsets.ViewSet):
         tags=["Employee"],
         request_body=CreateEmployeeSerializer
     )
+    # @action(methods=['POST'], detail=False, url_path='employees/')
     def create(self, request):
         serializer = CreateEmployeeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -191,12 +90,15 @@ class EmployeeViewset(viewsets.ViewSet):
         
         employee = Employee.objects.create(**serializer.validated_data)
         
+        # Generate QR code
         qr_data = f"{request.build_absolute_uri(f'/employee/{employee.id}/')}"
+        
         qr = qrcode.make(qr_data)
         buffer = BytesIO()
         qr.save(buffer, format="PNG")
         buffer.seek(0)
 
+        # Save QR code to employee
         employee.qr_code.save(f"employee_{employee.id}_qrcode.png", File(buffer), save=True)
         
         if socials:
@@ -204,6 +106,7 @@ class EmployeeViewset(viewsets.ViewSet):
             SocialMedia.objects.bulk_create(social_media_objects)
         
         return Response({'message': 'Employee created successfully'}, status=status.HTTP_201_CREATED)
+    
     
     
     @swagger_auto_schema(
@@ -244,7 +147,7 @@ class EmployeeViewset(viewsets.ViewSet):
         social_media.delete()
         
         return Response({'message': 'Social media link removed successfully'}, status=status.HTTP_204_NO_CONTENT)
-
+    
     
     @swagger_auto_schema(
         operation_description="Get calendar event for an employee",
@@ -258,58 +161,36 @@ class EmployeeViewset(viewsets.ViewSet):
         if not employee:
             return Response({'error': 'Employee not found'}, status=status.HTTP_404_NOT_FOUND)
         
-        odoo_response = self.send_calendar_event_to_odoo(pk)
-
-        if odoo_response:
-            return Response(odoo_response, status=status.HTTP_200_OK)
-        else:
-            return Response({"error": "Error getting events from Odoo."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        calendar = Event.objects.filter(employee=employee)
+        
+        result_page = paginator.paginate_queryset(calendar, request)
+        if result_page is not None:
+            serializer = EventSerializer(result_page, many=True)
+            return paginator.get_paginated_response(serializer.data)
+        
+        return Response(EventSerializer(calendar, many=True).data)
     
-    
+        
     @swagger_auto_schema(
-    operation_description="Add calendar event for an employee",
-    operation_summary="Add calendar event for an employee",
-    tags=["Employee"],
-    request_body=EventSerializer
-)
-    @action(methods=['POST'], detail=False, url_path="add-calendar")
-    def add_calendar(self, request):
-
-        try:
-            
-            serializer = EventSerializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
+        operation_description="Add calendar event for an employee",
+        operation_summary="Add calendar event for an employee",
+        tags=["Employee"],
+        request_body=EventSerializer
+    )
+    @action(methods=['POST'], detail=True, url_path="add-calendar")
+    def add_calendar(self, request, pk):
+        paginator = self.pagination_class()
+        employee = Employee.objects.filter(id=pk).first()
+        
+        if not employee:
+            return Response({'error': 'Employee not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = EventSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        event = Event.objects.create(employee=employee, **serializer.validated_data)
+        return Response(EventSerializer(event).data, status=status.HTTP_201_CREATED)
     
-            
-            event_data = serializer.validated_data
-        
-            
-            
-            
-            event_data["start_date"] = event_data["start_date"].replace(tzinfo=None).isoformat()
-            event_data["end_date"] = event_data["end_date"].replace(tzinfo=None).isoformat()
-
-
-        
-            
-            event_data["customer_id"] = request.user.odoo_id
-    
-            try:
-               
-                odoo_response = self.send_add_calendar_event_to_odoo(event_data)
-        
-                
-                if odoo_response:
-                    return Response(odoo_response, status=status.HTTP_201_CREATED)
-                else:
-                    return Response({"error": "Error adding event to Odoo."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-            except Exception as odoo_error:
-                return Response({"error": f"Error contacting Odoo: {str(odoo_error)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        except Exception as e:
-            return Response({"error": f"Error processing request: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
-        
     
     @swagger_auto_schema(
         operation_description="Get Hero header title for employee page",

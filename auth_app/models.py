@@ -94,8 +94,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     phone_number = models.CharField(max_length=20, blank=True, null=True)
     profile_picture = models.ImageField(upload_to='users/profile_pictures/', blank=True, null=True)
     timezone = models.CharField(max_length=100, default='UTC', null=True, blank=True)
-    #id asigned by odoo to identify the costumer or client there.
-    odoo_id = models.IntegerField(null=False, blank=False)
+    
     # Subscription Information
     plan_type = models.CharField(max_length=20, choices=PLAN_TYPE, default=FREE)
     # billing_status TBD
@@ -139,3 +138,13 @@ class Visitor(models.Model):
 
     def __str__(self):
         return f"{self.ip_address} visited {self.page} on {self.visited_at}"
+
+
+
+
+class BlacklistedIP(models.Model):
+    ip_address = models.GenericIPAddressField(unique=True)
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Blacklisted IP: {self.ip_address}"

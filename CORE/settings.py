@@ -23,15 +23,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config("SECRET_KEY")
-
+SECRET_KEY = 'django-insecure-n#7=3=4tytp87w5ok$kc0ip3slgb_0(jh94f^9h)bspnr@gg_l'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config("DEBUG", cast=bool, default=True)
+DEBUG = True
 
+ALLOWED_HOSTS = ['127.0.0.1','37.27.208.104', '0.0.0.0', 'localhost']
 
-
-ALLOWED_HOSTS = ['127.0.0.1','37.27.208.104', '0.0.0.0', 'localhost', '37.27.25.208']
+if DEBUG:
+    ALLOWED_HOSTS.append("b167dd10e618.ngrok.app")
 
 
 # Application definition
@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
     
     # Third party apps
     'drf_yasg',
@@ -60,13 +61,13 @@ INSTALLED_APPS = [
     'calendar_app',
     'cms',
     'hero',
+    'customers',
+    'career_app',
+    'payment_app',
 ]
 
 ASGI_APPLICATION = "CORE.asgi.application"
 AUTH_USER_MODEL = 'auth_app.User'
-
-
-SESSION_COOKIE_NAME = 'sessionid'  
 
 MIDDLEWARE = [
     
@@ -83,15 +84,16 @@ MIDDLEWARE = [
     
     # custom middleware
     'middlewares.visitors_details_middleware.VisitorTrackingMiddleware',
+    'middlewares.block_ip_address_middleware.BlockBlacklistedIPsMiddleware',
 ]
 
 ROOT_URLCONF = 'CORE.urls'
 
-CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='').split(',')
-
-
-CSRF_TRUSTED_ORIGINS = ['http://localhost']
-
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "https://b167dd10e618.ngrok.app",
+]
 
 TEMPLATES = [
     {
@@ -134,6 +136,18 @@ DATABASES = {
 }
 
 
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = config("EMAIL_HOST", default="")
+EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="")
+EMAIL_FROM = config("EMAIL_FROM", default="")
+EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
+EMAIL_PORT = config("EMAIL_PORT", default=587)
+EMAIL_USE_TLS = config("EMAIL_USE_TLS", cast=bool, default=False)
+EMAIL_USE_SSL = config("EMAIL_USE_SSL", cast=bool, default=False)
+
+EMAIL_VERIFICATION_URL = config("EMAIL_VERIFICATION_URL", default="")
+
+
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
@@ -151,10 +165,6 @@ AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
-]
-
-AUTHENTICATION_BACKENDS = [
-    'django.contrib.auth.backends.ModelBackend',  # backend por defecto
 ]
 
 
@@ -199,9 +209,10 @@ CACHES = {
 
 USER_AGENTS_CACHE = 'default'
 
+MEDIA_ROOT = BASE_DIR / 'media'
 MEDIA_URL = '/media/'
-# MEDIA_ROOT = BASE_DIR / 'media'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static') ]
 
 
 CKEDITOR_UPLOAD_PATH = "uploads/"
@@ -210,20 +221,12 @@ CKEDITOR_ALLOW_NONIMAGE_FILES = True
 REST_FRAMEWORK = {
 
     'DEFAULT_AUTHENTICATION_CLASSES': (
-       
-        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
     "PAGE_SIZE": 10,
-    
-    
-
 
 }
-
-
-CSRF_COOKIE_NAME = "csrftoken"
-CSRF_HEADER_NAME = 'X-CSRFTOKEN'
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(days=7),
@@ -251,28 +254,11 @@ SIMPLE_JWT = {
     "SLIDING_TOKEN_REFRESH_LIFETIME": timedelta(days=1),
 }
 
-CSRF_COOKIE_HTTPONLY = False
-
 BASE_URL=config("BASE_URL", default="http://localhost:8000")
 
-ADMIN_EMAIL = config("ADMIN_EMAIL", default="sales@codestra.co")
+ADMIN_EMAIL = config("ADMIN_EMAIL", default="support@codestra.co")
 EMAIL_FROM = config("EMAIL_FROM", default="sales@codestra.co")
+STRIP_SECRET_KEY = config("STRIP_SECRET_KEY", default="")
+STRIP_PUBLISHABLE_KEY = config("STRIP_PUBLISHABLE_KEY", default="")
+STRIPE_WEBHOOK_SECRET = config("STRIPE_WEBHOOK_SECRET", default="")
 
-
-#para cookies
-CORS_ALLOW_CREDENTIALS = True  # Permitir el envío de cookies
-SESSION_COOKIE_SECURE = False  # Solo para desarrollo local
-CSRF_COOKIE_SECURE = False  # S
-
-SESSION_COOKIE_SAMESITE = 'None'
-# settings.py
-SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # Asegúrate de que las sesiones se guardan en la base de datos
-
-
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = config('EMAIL_HOST', default='smtp.mailtrap.io')  # Cambia el valor por el predeterminado si no se encuentra en .env
-EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
-EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
-EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
-EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
-EMAIL_FROM = config('EMAIL_FROM', default='info@dietarify.com')

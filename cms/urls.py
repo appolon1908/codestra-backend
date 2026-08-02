@@ -4,8 +4,7 @@ from .views import (
         ContactUsViewSet,
         CaseStudyViewSet, 
         TaxPayerViewSet,
-        AnswerViewSet,
-        CareerViewSet,
+        TestimonialViewSet
         )
 
 from django.urls import path, include
@@ -19,8 +18,8 @@ router.register(r'faqs', FAQsViewSet, basename='faq')
 router.register(r'contact-us', ContactUsViewSet, basename='contact-us')
 router.register(r'logo', LogoViewSet, basename='logo')
 router.register(r'tax-payer', TaxPayerViewSet, basename='tax-payer')
-router.register(r'careers', CareerViewSet, basename="careers")
-router.register(r'answers', AnswerViewSet, basename="answers")
+
+router.register(r'testimonial', TestimonialViewSet, basename='testimonial')
 
 urlpatterns = [
     path('', include(router.urls)),

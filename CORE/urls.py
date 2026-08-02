@@ -31,12 +31,9 @@ schema_view = get_schema_view(
       default_version='v1',
       description="Codstra API",
       license=openapi.License(name="BSD License"),
-      
    ),
    public=True,
    permission_classes=(permissions.AllowAny,),
-    
-
 )
 
 
@@ -49,4 +46,12 @@ urlpatterns = [
     path('api/calendar/', include('calendar_app.urls')),
     path('api/cms/', include('cms.urls')),
     path('api/hero/', include('hero.urls')),
+    path('api/customers/', include('customers.urls')),
+    path('api/career/', include('career_app.urls')),
+    path('api/payment/', include('payment_app.urls')),
+    path('api/career/', include('career_app.urls')),
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

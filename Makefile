@@ -35,6 +35,9 @@ load_employee_social:
 update_client_id:
 	$(COMPOSE) exec $(SERVICE) python manage.py update_client_id
 
+load_faq_data:
+	$(COMPOSE) exec $(SERVICE) python manage.py load_faq_data
+
 pre-commit:
 	pre-commit run --all-files
 
@@ -53,7 +56,8 @@ test:
 down:
 	$(COMPOSE) down
 
-
+collectstatic:
+	$(COMPOSE) exec $(SERVICE) python manage.py collectstatic
 
 migrate:
 	$(COMPOSE) exec $(SERVICE) python manage.py migrate

@@ -1,3 +1,4 @@
+from django.conf import settings
 from rest_framework import serializers
 from .models import Blog, Tag, Category, Comment, Like
 
@@ -44,13 +45,22 @@ class BlogOutputSerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     
     def get_comment(self, obj):
-        comments = Comment.objects.filter(blog=obj, can_publish_comment=True)
-        return CommentSerializer(comments, many=True).data
+        comment = Comment.objects.filter(blog=obj, can_publish_comment=True)
+        return CommentSerializer(comment, many=True).data
+    
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        
+        image = instance.image.url if instance.image else None
+        data['image'] = f"{settings.BASE_URL}{image}" if image else None
+        video = instance.video.url if instance.video else None
+        data['video'] = f"{settings.BASE_URL}{video}" if video else None
+        return data
     
     class Meta:
         model = Blog
         fields = [
-            'id', 'title', 'content', 
+            'id', 'title', 'content',
             'image', 'video', 'author', 
             'category', 'tags', 'status', 
             'views', 'likes', 'total_likes', 
