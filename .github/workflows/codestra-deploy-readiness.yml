@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: Verification, immutable release, staging, or read-only production canary
+        description: Verify, release, deploy/certify staging read-only, or promote a read-only canary
         required: true
         type: choice
         default: verify
@@ -26,7 +26,7 @@ on:
         type: string
         default: ""
       canary_percent:
-        description: Read-only production canary percentage; maximum 1
+        description: Production read-only canary percentage; maximum 1
         required: false
         type: string
         default: "1"
@@ -39,8 +39,11 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  DEPLOY_READINESS_CONTRACT_VERSION: "1"
+  DEPLOY_READINESS_CONTRACT_VERSION: "2"
   REPOSITORY_CLASS: "service"
+  RUN_STACK_TESTS: "true"
+  ARTIFACT_STRATEGY: "auto"
+  RUNTIME_DEPLOYABLE: "true"
   HEALTH_PATHS: "/health,/ready,/version"
   GITLEAKS_VERSION: "8.30.1"
   GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
@@ -88,6 +91,7 @@ jobs:
           import json
           import os
           import pathlib
+          import re
           import yaml
 
           root = pathlib.Path(".").resolve()
@@ -95,7 +99,7 @@ jobs:
               ".git", ".nuxt", ".output", ".venv", ".venv-ci", "__pycache__",
               "build", "coverage", "dist", "node_modules", "vendor",
           }
-          markers = ("<<<<<<< ", "=======", ">>>>>>> ")
+          conflict = re.compile(r"^(?:<{7}|={7}|>{7})(?: .*)?$", re.MULTILINE)
           counts = {"json": 0, "yaml": 0, "text": 0}
 
           for path in root.rglob("*"):
@@ -129,8 +133,8 @@ jobs:
                   ".rs", ".sh", ".sql", ".ts", ".tsx", ".txt", ".vue", ".yaml", ".yml",
               }:
                   text = path.read_text(encoding="utf-8", errors="replace")
-                  if all(marker in text for marker in markers):
-                      raise SystemExit(f"unresolved merge markers: {rel}")
+                  if conflict.search(text):
+                      raise SystemExit(f"unresolved merge marker: {rel}")
                   counts["text"] += 1
 
           print("REPOSITORY_CLASS=" + os.environ["REPOSITORY_CLASS"])
@@ -152,7 +156,7 @@ jobs:
           has_docker=false
           find . -maxdepth 5 -type f -name package.json -not -path '*/node_modules/*' -print -quit | grep -q . && has_node=true || true
           find . -maxdepth 5 -type f \( -name pyproject.toml -o -name requirements.txt -o -name requirements.lock -o -name setup.py \) -print -quit | grep -q . && has_python=true || true
-          find . -maxdepth 5 -type f -name go.mod -print -quit | grep -q . && has_go=true || true
+          find . -maxdepth 5 -type f -name go.mod -not -path '*/vendor/*' -print -quit | grep -q . && has_go=true || true
           find . -maxdepth 5 -type f -name Dockerfile -print -quit | grep -q . && has_docker=true || true
           echo "node=${has_node}" >> "$GITHUB_OUTPUT"
           echo "python=${has_python}" >> "$GITHUB_OUTPUT"
@@ -164,13 +168,13 @@ jobs:
           echo "DOCKER=${has_docker}"
 
       - name: Set up Node.js
-        if: steps.stacks.outputs.node == 'true'
+        if: env.RUN_STACK_TESTS == 'true' && steps.stacks.outputs.node == 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "22.14.0"
 
       - name: Run Node.js projects
-        if: steps.stacks.outputs.node == 'true' && (env.REPOSITORY_CLASS == 'frontend' || env.REPOSITORY_CLASS == 'backend' || env.REPOSITORY_CLASS == 'service' || env.REPOSITORY_CLASS == 'adapter')
+        if: env.RUN_STACK_TESTS == 'true' && steps.stacks.outputs.node == 'true'
         run: |
           set -Eeuo pipefail
           while IFS= read -r manifest; do
@@ -202,7 +206,7 @@ jobs:
           done < <(find . -maxdepth 5 -type f -name package.json -not -path '*/node_modules/*' | sort)
 
       - name: Run Python projects
-        if: steps.stacks.outputs.python == 'true' && (env.REPOSITORY_CLASS == 'backend' || env.REPOSITORY_CLASS == 'service' || env.REPOSITORY_CLASS == 'adapter')
+        if: env.RUN_STACK_TESTS == 'true' && steps.stacks.outputs.python == 'true'
         run: |
           set -Eeuo pipefail
           python - <<'PY'
@@ -244,7 +248,7 @@ jobs:
           PY
 
       - name: Run Go modules
-        if: steps.stacks.outputs.go == 'true' && (env.REPOSITORY_CLASS == 'backend' || env.REPOSITORY_CLASS == 'service' || env.REPOSITORY_CLASS == 'adapter')
+        if: env.RUN_STACK_TESTS == 'true' && steps.stacks.outputs.go == 'true'
         env:
           GOTOOLCHAIN: auto
           GOWORK: "off"
@@ -262,6 +266,7 @@ jobs:
           done < <(find . -maxdepth 5 -type f -name go.mod -not -path '*/vendor/*' | sort)
 
       - name: Validate Compose files
+        if: env.RUN_STACK_TESTS == 'true'
         run: |
           set -Eeuo pipefail
           while IFS= read -r compose; do
@@ -275,7 +280,7 @@ jobs:
           done < <(find . -maxdepth 5 -type f \( -name compose.yml -o -name compose.yaml -o -name docker-compose.yml -o -name docker-compose.yaml \) | sort)
 
       - name: Build primary container without publishing
-        if: steps.stacks.outputs.docker == 'true' && (env.REPOSITORY_CLASS == 'frontend' || env.REPOSITORY_CLASS == 'backend' || env.REPOSITORY_CLASS == 'service' || env.REPOSITORY_CLASS == 'adapter')
+        if: env.RUN_STACK_TESTS == 'true' && steps.stacks.outputs.docker == 'true'
         run: |
           set -Eeuo pipefail
           dockerfile="$(find . -maxdepth 5 -type f -name Dockerfile | sort | head -n1)"
@@ -296,6 +301,8 @@ jobs:
             echo "- Contract: \`${DEPLOY_READINESS_CONTRACT_VERSION}\`"
             echo "- Repository class: \`${REPOSITORY_CLASS}\`"
             echo "- Exact source: \`${{ github.event.pull_request.head.sha || github.sha }}\`"
+            echo "- Artifact strategy: \`${ARTIFACT_STRATEGY}\`"
+            echo "- Runtime deployable: \`${RUNTIME_DEPLOYABLE}\`"
             echo "- Health paths: \`${HEALTH_PATHS}\`"
             echo "- Runtime deployment authorized by CI: **No**"
             echo "- External effects authorized by CI: **No**"
@@ -324,16 +331,43 @@ jobs:
           tar -xzf "$archive" -C "$RUNNER_TEMP" gitleaks
           chmod 0755 "$RUNNER_TEMP/gitleaks"
 
-      - name: Scan tracked source without exposing findings
+      - name: Scan tracked source and emit only sanitized metadata
         run: |
           set -Eeuo pipefail
           scan_root="${RUNNER_TEMP}/tracked-source"
+          report="${RUNNER_TEMP}/gitleaks-report.json"
           mkdir -p "$scan_root"
           git archive HEAD | tar -x -C "$scan_root"
+          set +e
           (
             cd "$scan_root"
-            "$RUNNER_TEMP/gitleaks" dir --no-banner --redact --exit-code 1 .
+            "$RUNNER_TEMP/gitleaks" dir \
+              --no-banner \
+              --redact \
+              --report-format json \
+              --report-path "$report" \
+              --exit-code 1 \
+              .
           )
+          status=$?
+          set -e
+          python - "$report" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          path = pathlib.Path(sys.argv[1])
+          findings = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else []
+          for finding in findings:
+              print(
+                  "SECRET_SCAN_FINDING="
+                  f"rule:{finding.get('RuleID', 'unknown')};"
+                  f"file:{finding.get('File', 'unknown')};"
+                  f"line:{finding.get('StartLine', 'unknown')}"
+              )
+          print(f"SECRET_SCAN_FINDING_COUNT={len(findings)}")
+          PY
+          exit "$status"
 
   immutable-candidate:
     name: deploy-readiness / immutable-candidate
@@ -421,11 +455,12 @@ jobs:
 
           payload = {
               "buildDefinition": {
-                  "buildType": "https://codestra.co/deploy-readiness/v1",
+                  "buildType": "https://codestra.co/deploy-readiness/v2",
                   "externalParameters": {
                       "repository": os.environ["GITHUB_REPOSITORY"],
                       "source_sha": os.environ["GITHUB_SHA"],
                       "repository_class": os.environ["REPOSITORY_CLASS"],
+                      "artifact_strategy": os.environ["ARTIFACT_STRATEGY"],
                   },
                   "internalParameters": {},
                   "resolvedDependencies": [{
@@ -449,7 +484,18 @@ jobs:
           )
           PY
 
-          if [[ -n "$dockerfile" ]]; then
+          use_image=false
+          if [[ "$ARTIFACT_STRATEGY" == "oci" ]]; then
+            [[ -n "$dockerfile" ]] || { echo "RELEASE_ERROR=oci strategy requires Dockerfile" >&2; exit 1; }
+            use_image=true
+          elif [[ "$ARTIFACT_STRATEGY" == "auto" && -n "$dockerfile" ]]; then
+            use_image=true
+          elif [[ "$ARTIFACT_STRATEGY" != "source-bundle" && "$ARTIFACT_STRATEGY" != "auto" ]]; then
+            echo "RELEASE_ERROR=unsupported artifact strategy" >&2
+            exit 1
+          fi
+
+          if [[ "$use_image" == true ]]; then
             tag="${image_repo}:sha-${source_sha}"
             context="$(dirname "$dockerfile")"
             docker build \
@@ -502,51 +548,54 @@ jobs:
             artifact_digest="$digest"
           else
             git archive --format=tar.gz --output=evidence/source.tar.gz HEAD
-            python - <<'PY'
-            import hashlib
-            import json
-            import pathlib
+          python - <<'PY'
+          import hashlib
+          import json
+          import pathlib
 
-            root = pathlib.Path(".")
-            records = []
-            for path in sorted(p for p in root.rglob("*") if p.is_file() and ".git" not in p.parts and "evidence" not in p.parts):
-                records.append({
-                    "path": path.as_posix(),
-                    "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-                    "size": path.stat().st_size,
-                })
-            pathlib.Path("evidence/source-sbom.json").write_text(
-                json.dumps({"schema_version": 1, "files": records}, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
-            )
-            PY
+          root = pathlib.Path(".")
+          records = []
+          for path in sorted(
+              p for p in root.rglob("*")
+              if p.is_file() and ".git" not in p.parts and "evidence" not in p.parts
+          ):
+              records.append({
+                  "path": path.as_posix(),
+                  "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                  "size": path.stat().st_size,
+              })
+          pathlib.Path("evidence/source-sbom.json").write_text(
+              json.dumps({"schema_version": 1, "files": records}, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
             bundle_digest="sha256:$(sha256sum evidence/source.tar.gz | awk '{print $1}')"
             manifest=evidence/source-release-manifest.json
-            python - "$bundle_digest" <<'PY'
-            import hashlib
-            import json
-            import os
-            import pathlib
-            import subprocess
-            import sys
+          python - "$bundle_digest" <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import subprocess
+          import sys
 
-            digest = sys.argv[1]
-            payload = {
-                "schema_version": 1,
-                "repository": os.environ["GITHUB_REPOSITORY"],
-                "source_sha": os.environ["GITHUB_SHA"],
-                "source_tree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip(),
-                "bundle_digest": digest,
-                "sbom_sha256": "sha256:" + hashlib.sha256(pathlib.Path("evidence/source-sbom.json").read_bytes()).hexdigest(),
-                "provenance_sha256": "sha256:" + hashlib.sha256(pathlib.Path("evidence/provenance.json").read_bytes()).hexdigest(),
-                "runtime_deployment_authorized": False,
-                "external_effects_authorized": False,
-            }
-            pathlib.Path("evidence/source-release-manifest.json").write_text(
-                json.dumps(payload, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
-            )
-            PY
+          digest = sys.argv[1]
+          payload = {
+              "schema_version": 1,
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "source_sha": os.environ["GITHUB_SHA"],
+              "source_tree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip(),
+              "bundle_digest": digest,
+              "sbom_sha256": "sha256:" + hashlib.sha256(pathlib.Path("evidence/source-sbom.json").read_bytes()).hexdigest(),
+              "provenance_sha256": "sha256:" + hashlib.sha256(pathlib.Path("evidence/provenance.json").read_bytes()).hexdigest(),
+              "runtime_deployment_authorized": False,
+              "external_effects_authorized": False,
+          }
+          pathlib.Path("evidence/source-release-manifest.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
             identity="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/codestra-deploy-readiness.yml@${GITHUB_REF}"
             "$RUNNER_TEMP/cosign" sign-blob --yes --bundle evidence/source-release-manifest.sigstore.json "$manifest"
             "$RUNNER_TEMP/cosign" verify-blob \
@@ -578,7 +627,7 @@ jobs:
           kind, reference, digest = sys.argv[1:]
           evidence = pathlib.Path("evidence")
           payload = {
-              "schema_version": 1,
+              "schema_version": 2,
               "contract_version": os.environ["DEPLOY_READINESS_CONTRACT_VERSION"],
               "repository": os.environ["GITHUB_REPOSITORY"],
               "repository_class": os.environ["REPOSITORY_CLASS"],
@@ -628,6 +677,7 @@ jobs:
     needs:
       - immutable-candidate
     if: >-
+      env.RUNTIME_DEPLOYABLE == 'true' &&
       github.event_name == 'workflow_dispatch' &&
       (inputs.operation == 'deploy-staging-readonly' || inputs.operation == 'certify-staging-readonly')
     runs-on:
@@ -682,6 +732,7 @@ jobs:
     needs:
       - immutable-candidate
     if: >-
+      env.RUNTIME_DEPLOYABLE == 'true' &&
       github.event_name == 'workflow_dispatch' &&
       inputs.operation == 'promote-production-readonly'
     runs-on:
