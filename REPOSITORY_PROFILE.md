@@ -4,7 +4,7 @@
 
 - **Repository:** `appolon1908-hue/codestra-backend`
 - **Category:** Corporate backend — recovered API
-- **Visibility:** `private`
+- **Visibility:** `public`
 - **Default branch:** `main`
 - **Authority:** Recovered Codestra Django API; authority must be reconciled with `backend2`
 - **Status:** Implemented recovered Django API with Gunicorn, Celery, PostgreSQL, and Redis.
