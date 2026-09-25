@@ -1,0 +1,10 @@
+title = "Codestra backend secret-scanning policy"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Vendored minified Redoc browser bundle from drf-yasg; reviewed static asset, not a runtime credential"
+condition = "AND"
+rules = ["generic-api-key"]
+paths = ['''^static/drf-yasg/redoc/redoc\.min\.js$''']
