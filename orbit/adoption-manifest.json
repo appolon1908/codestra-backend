@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "2.0.0",
+  "repository": "appolon1908-hue/codestra-backend",
+  "classification": "backend-api",
+  "targetBranch": "codex/codestra-orbit-v2-codestra-backend",
+  "adoptionMode": "contract-only",
+  "domain": null,
+  "domainStatus": "not-applicable",
+  "requirements": {
+    "renderedInterface": false,
+    "sharedHeaderFooter": false,
+    "loginLogoutPages": false,
+    "browserSessionContract": true,
+    "authorizationCodePkce": true,
+    "serverSideTokenStorage": true,
+    "browserTokenResponseProhibited": true,
+    "sessionRevocation": true,
+    "domainRegistry": true,
+    "correlationId": true,
+    "audit": true,
+    "rollback": true
+  },
+  "status": "branch-created",
+  "blockers": [
+    "Replace the current seven-day browser JWT response flow with Authorization Code plus PKCE and an opaque, HttpOnly, Secure, SameSite session cookie.",
+    "Implement and contract-test /auth/login, /auth/signup, /auth/callback, /auth/session, /auth/refresh, /auth/logout, and /auth/logout-all for appolon1908-hue/codestra pull request 22.",
+    "Prove issuer, audience, nonce, state, redirect allowlist, CSRF, session rotation/revocation, rate limiting, audit, migrations, monitoring, and rollback before deployment."
+  ]
+}
