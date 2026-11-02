@@ -208,3 +208,26 @@ class AuthSourceTests(TestCase):
         for candidate in (str(expired), str(RefreshToken.for_user(self.user))):
             with self.assertRaises(TokenError):
                 AccessToken(candidate)
+
+    def test_every_owned_application_module_imports_without_provider_or_worker_effects(self):
+        from contextlib import ExitStack
+        from importlib import import_module
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[1]
+        packages = {path.name for path in root.iterdir() if path.is_dir() and (path / '__init__.py').is_file()}
+        modules = []
+        for path in root.rglob('*.py'):
+            relative = path.relative_to(root)
+            if relative.parts[0] not in packages or 'migrations' in relative.parts or path.name.startswith('test'):
+                continue
+            parts = list(relative.with_suffix('').parts)
+            if parts[-1] == '__init__':
+                parts.pop()
+            modules.append('.'.join(parts))
+        with ExitStack() as stack:
+            for target in ('socket.socket.connect', 'socket.create_connection', 'subprocess.Popen', 'smtplib.SMTP', 'celery.app.task.Task.apply_async', 'django.db.backends.utils.CursorWrapper.execute'):
+                stack.enter_context(patch(target, side_effect=AssertionError('Import-time network/database/provider/process effects forbidden')))
+            for module in sorted(set(modules)):
+                with self.subTest(module=module):
+                    import_module(module)
+        self.assertGreater(len(set(modules)), 50)

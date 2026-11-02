@@ -16,10 +16,35 @@ jobs:
           persist-credentials: false
       - name: Build source candidate without publishing
         run: docker build --tag source-security-candidate .
-      - name: Inventory installed runtime dependency metadata without activation
-        run: >-
-          docker run --rm --network none --entrypoint python source-security-candidate
-          -c 'import importlib.metadata as m,json; print("PACKAGE_GRAPH_JSON="+json.dumps([{ "name":d.metadata["Name"], "version":d.version, "requires":d.requires or [], "entry_points":[{"group":e.group,"name":e.name,"value":e.value} for e in d.entry_points], "top_level":d.read_text("top_level.txt") or ""} for d in m.distributions()],sort_keys=True))'
+      - name: Inventory and verify the approved runtime dependency boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network none --entrypoint python source-security-candidate \
+            -c 'import importlib.metadata as m,json; print(json.dumps([{ "name":d.metadata["Name"], "version":d.version, "requires":d.requires or [], "entry_points":[{"group":e.group,"name":e.name,"value":e.value} for e in d.entry_points], "top_level":d.read_text("top_level.txt") or ""} for d in m.distributions()],sort_keys=True))' \
+            > "$RUNNER_TEMP/runtime-metadata.json"
+          python - <<'PYBOUNDARY'
+          import json, os, re
+          from pathlib import Path
+          rows = json.loads(Path(os.environ['RUNNER_TEMP'], 'runtime-metadata.json').read_text())
+          normalize = lambda name: re.sub(r'[-_.]+', '-', name).lower()
+          installed = {normalize(row['name']) for row in rows}
+          proof = json.loads(Path('governance/legacy-dependency-retirement.json').read_text())
+          assert not installed.intersection(proof['exclusive_baseline_closure']), 'Retired unsupported dependency closure reintroduced'
+          assert set(proof['retained_shared_baseline']).issubset(installed), 'Shared application dependency missing'
+          pins = sorted({row['name'] + '==' + row['version'] for row in rows})
+          Path(os.environ['RUNNER_TEMP'], 'runtime-installed.txt').write_text('\n'.join(pins) + '\n')
+          print('Actual installed runtime distributions:', len(rows))
+          print('PACKAGE_GRAPH_JSON=' + json.dumps(rows, sort_keys=True))
+          PYBOUNDARY
+      - name: Audit every installed runtime distribution without dependency substitution
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv "$RUNNER_TEMP/image-audit-venv"
+          "$RUNNER_TEMP/image-audit-venv/bin/pip" install pip-audit==2.10.0
+          "$RUNNER_TEMP/image-audit-venv/bin/pip-audit" --no-deps --disable-pip \
+            --requirement "$RUNNER_TEMP/runtime-installed.txt"
       - name: Verify official scanner and scan full image
         shell: bash
         run: |
