@@ -16,6 +16,10 @@ jobs:
           persist-credentials: false
       - name: Build source candidate without publishing
         run: docker build --tag source-security-candidate .
+      - name: Inventory installed runtime dependency metadata without activation
+        run: >-
+          docker run --rm --network none --entrypoint python source-security-candidate
+          -c 'import importlib.metadata as m,json; print("PACKAGE_GRAPH_JSON="+json.dumps([{ "name":d.metadata["Name"], "version":d.version, "requires":d.requires or [], "entry_points":[{"group":e.group,"name":e.name,"value":e.value} for e in d.entry_points], "top_level":d.read_text("top_level.txt") or ""} for d in m.distributions()],sort_keys=True))'
       - name: Verify official scanner and scan full image
         shell: bash
         run: |
