@@ -2,7 +2,9 @@ from rest_framework import status, serializers
 from rest_framework.viewsets import ViewSet
 from rest_framework.response import Response
 from rest_framework.decorators import action, api_view
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated, BasePermission
+from rest_framework.exceptions import PermissionDenied
+from django.shortcuts import get_object_or_404
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.http import JsonResponse
 import requests
@@ -126,7 +128,7 @@ class AuthViewSet(ViewSet):
 
             user_password = check_password(password, user.password)
             if not user_password:
-                return Response(errors={"error": "incorrect email/password"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": "incorrect email/password"}, status=status.HTTP_400_BAD_REQUEST)
 
             token = RefreshToken.for_user(user)
             data = {
@@ -198,13 +200,23 @@ class AuthViewSet(ViewSet):
         else:
             return Response({"message": "User is not authenticated"}, status=status.HTTP_401_UNAUTHORIZED)
 
+class AccountMutationPermission(BasePermission):
+    """Existing model permissions authorize cross-account mutations only."""
+    def has_object_permission(self, request, view, obj):
+        operation = {'update': 'change', 'destroy': 'delete'}.get(view.action)
+        if operation is None or request.user.pk == obj.pk:
+            return True
+        opts = User._meta
+        return request.user.has_perm(f'{opts.app_label}.{operation}_{opts.model_name}')
+
+
 class UserViewSet(ViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, AccountMutationPermission]
+
     def get_object(self, pk):
-        try:
-            return User.objects.get(pk=pk)
-        except User.DoesNotExist:
-            return Response(status=status.HTTP_404_NOT_FOUND)
+        user = get_object_or_404(User, pk=pk)
+        self.check_object_permissions(self.request, user)
+        return user
     
     @swagger_auto_schema(
         operation_description="List Users",
@@ -244,7 +256,11 @@ class UserViewSet(ViewSet):
         request_body=UserSerializer
     )
     def update(self, request, pk=None):
-        user = User.objects.filter(id=pk).first()
+        user = self.get_object(pk)
+        privilege_fields = {'is_active', 'is_staff', 'is_superuser', 'is_admin', 'groups', 'user_permissions'}
+        opts = User._meta
+        if privilege_fields.intersection(request.data) and not request.user.has_perm(f'{opts.app_label}.change_{opts.model_name}'):
+            raise PermissionDenied('Account privileges require the existing model change permission.')
         serializer = UserSerializer(user, data=request.data)
         serializer.is_valid(raise_exception=True)
         user.email = serializer.validated_data.get('email', user.email)
@@ -264,6 +280,6 @@ class UserViewSet(ViewSet):
         tags=["Auth"],
     )
     def destroy(self, request, pk=None):
-        user = User.objects.filter(id=pk).first()
+        user = self.get_object(pk)
         user.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

@@ -81,3 +81,97 @@ class AuthSourceTests(TestCase):
 
     def test_logout_invalid_token_rejected(self):
         self.assertEqual(self.auth('logout', {'refresh': 'invalid'}).status_code, 400)
+
+    def mutate(self, actor, target, operation, **extra):
+        if operation == 'update':
+            payload = {'email': 'updated-' + target.email, 'first_name': 'Updated', 'last_name': 'Account', 'password': 'unused-write-only-password'}
+            payload.update(extra)
+            request = self.factory.put('/api/auth/users/' + target.pk + '/', payload, format='json')
+            mapping = {'put': 'update'}
+        else:
+            request = self.factory.delete('/api/auth/users/' + target.pk + '/')
+            mapping = {'delete': 'destroy'}
+        force_authenticate(request, actor)
+        return UserViewSet.as_view(mapping)(request, pk=target.pk)
+
+    def grant_model_permission(self, actor, operation):
+        from django.contrib.auth.models import Permission
+        opts = User._meta
+        actor.user_permissions.add(Permission.objects.get(content_type__app_label=opts.app_label, content_type__model=opts.model_name, codename=f'{operation}_{opts.model_name}'))
+
+    def test_own_account_update_remains_allowed(self):
+        self.assertEqual(self.mutate(self.user, self.user, 'update').status_code, 200)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.first_name, 'Updated')
+        self.assertTrue(self.user.check_password('source-test-password'))
+
+    def test_own_account_delete_remains_allowed(self):
+        self.assertEqual(self.mutate(self.user, self.user, 'destroy').status_code, 204)
+        self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
+
+    def test_regular_user_cross_account_update_denied(self):
+        self.assertEqual(self.mutate(self.user, self.other, 'update').status_code, 403)
+        self.other.refresh_from_db()
+        self.assertEqual(self.other.first_name, 'Other')
+
+    def test_staff_without_model_permission_cannot_update_other(self):
+        self.user.is_staff = True
+        self.user.save()
+        self.assertEqual(self.mutate(self.user, self.other, 'update').status_code, 403)
+
+    def test_staff_without_model_permission_cannot_delete_other(self):
+        self.user.is_staff = True
+        self.user.save()
+        self.assertEqual(self.mutate(self.user, self.other, 'destroy').status_code, 403)
+        self.assertTrue(User.objects.filter(pk=self.other.pk).exists())
+
+    def test_superuser_can_update_other(self):
+        self.user.is_superuser = True
+        self.user.save()
+        self.assertEqual(self.mutate(self.user, self.other, 'update').status_code, 200)
+
+    def test_superuser_can_delete_other(self):
+        self.user.is_superuser = True
+        self.user.save()
+        self.assertEqual(self.mutate(self.user, self.other, 'destroy').status_code, 204)
+
+    def test_explicit_model_change_permission_allows_update(self):
+        self.grant_model_permission(self.user, 'change')
+        self.assertFalse(self.user.is_staff)
+        self.assertEqual(self.mutate(self.user, self.other, 'update').status_code, 200)
+
+    def test_explicit_model_delete_permission_allows_delete(self):
+        self.grant_model_permission(self.user, 'delete')
+        self.assertFalse(self.user.is_staff)
+        self.assertEqual(self.mutate(self.user, self.other, 'destroy').status_code, 204)
+
+    def test_change_permission_does_not_grant_delete(self):
+        self.grant_model_permission(self.user, 'change')
+        self.assertEqual(self.mutate(self.user, self.other, 'destroy').status_code, 403)
+
+    def test_delete_permission_does_not_grant_update(self):
+        self.grant_model_permission(self.user, 'delete')
+        self.assertEqual(self.mutate(self.user, self.other, 'update').status_code, 403)
+
+    def test_ordinary_own_account_privilege_fields_denied(self):
+        for field in ('is_staff', 'is_superuser', 'is_active', 'is_admin', 'groups', 'user_permissions'):
+            with self.subTest(field=field):
+                self.assertEqual(self.mutate(self.user, self.user, 'update', **{field: True}).status_code, 403)
+                self.user.refresh_from_db()
+                self.assertFalse(self.user.is_staff)
+                self.assertFalse(self.user.is_superuser)
+                self.assertFalse(self.user.is_admin)
+
+    def test_staff_own_account_privilege_fields_denied(self):
+        self.user.is_staff = True
+        self.user.save()
+        self.assertEqual(self.mutate(self.user, self.user, 'update', is_superuser=True).status_code, 403)
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.is_superuser)
+
+    def test_existing_list_and_read_behavior_unchanged(self):
+        for mapping, target in (({'get': 'list'}, None), ({'get': 'retrieve'}, self.other.pk)):
+            request = self.factory.get('/api/auth/users/')
+            force_authenticate(request, self.user)
+            response = UserViewSet.as_view(mapping)(request, **({'pk': target} if target else {}))
+            self.assertEqual(response.status_code, 200)
