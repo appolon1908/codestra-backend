@@ -1,0 +1,39 @@
+name: Candidate image security
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  candidate-image-security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Build source candidate without publishing
+        run: docker build --tag source-security-candidate .
+      - name: Verify official scanner and scan full image
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 https://github.com/aquasecurity/trivy/releases/download/v0.72.0/trivy_0.72.0_Linux-64bit.tar.gz -o "$RUNNER_TEMP/trivy.tar.gz"
+          echo "bbb64b9695866ce4a7a8f5c9592002c5961cab378577fa3f8a040df362b9b2ea  $RUNNER_TEMP/trivy.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/trivy.tar.gz" -C "$RUNNER_TEMP" trivy
+          set +e
+          "$RUNNER_TEMP/trivy" image --severity HIGH,CRITICAL --exit-code 1 --format json --output "$RUNNER_TEMP/image-security.json" source-security-candidate
+          scan_status=$?
+          set -e
+          python - <<'PYREPORT'
+          import json, os
+          report = json.load(open(os.path.join(os.environ['RUNNER_TEMP'], 'image-security.json')))
+          for result in report.get('Results', []):
+              for finding in result.get('Vulnerabilities', []):
+                  print(json.dumps({key: finding.get(key) for key in ('VulnerabilityID', 'PkgName', 'InstalledVersion', 'FixedVersion', 'Severity')}, sort_keys=True))
+              for finding in result.get('Secrets', []):
+                  print(json.dumps({'secret_location': {key: finding.get(key) for key in ('RuleID', 'StartLine', 'EndLine', 'Severity')}}, sort_keys=True))
+          PYREPORT
+          exit "$scan_status"
