@@ -32,7 +32,7 @@ jobs:
           report = json.load(open(os.path.join(os.environ['RUNNER_TEMP'], 'image-security.json')))
           for result in report.get('Results', []):
               for finding in result.get('Vulnerabilities', []):
-                  print(json.dumps({key: finding.get(key) for key in ('VulnerabilityID', 'PkgName', 'InstalledVersion', 'FixedVersion', 'Severity')}, sort_keys=True))
+                  print(json.dumps({'Target': result.get('Target'), **{key: finding.get(key) for key in ('VulnerabilityID', 'PkgName', 'InstalledVersion', 'FixedVersion', 'Severity')}}, sort_keys=True))
               for finding in result.get('Secrets', []):
                   print(json.dumps({'secret_location': {key: finding.get(key) for key in ('RuleID', 'StartLine', 'EndLine', 'Severity')}}, sort_keys=True))
           PYREPORT

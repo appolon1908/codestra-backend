@@ -175,3 +175,36 @@ class AuthSourceTests(TestCase):
             force_authenticate(request, self.user)
             response = UserViewSet.as_view(mapping)(request, **({'pk': target} if target else {}))
             self.assertEqual(response.status_code, 200)
+
+    def test_login_token_rejects_changed_signature(self):
+        from rest_framework_simplejwt.exceptions import TokenError
+        response = self.auth('login_view', {'email': self.user.email, 'password': 'source-test-password'})
+        parts = response.data['token']['access'].split('.')
+        parts[2] = ('A' if parts[2][0] != 'A' else 'B') + parts[2][1:]
+        with self.assertRaises(TokenError):
+            AccessToken('.'.join(parts))
+
+    def test_login_token_rejects_wrong_key_algorithm_and_unsigned_input(self):
+        import jwt
+        from rest_framework_simplejwt.exceptions import TokenError
+        response = self.auth('login_view', {'email': self.user.email, 'password': 'source-test-password'})
+        payload = dict(AccessToken(response.data['token']['access']).payload)
+        candidates = (
+            jwt.encode(payload, 'different-disposable-source-signing-key', algorithm='HS256'),
+            jwt.encode(payload, settings.SECRET_KEY, algorithm='HS384'),
+            jwt.encode(payload, '', algorithm='none'),
+        )
+        for candidate in candidates:
+            with self.subTest(kind=candidate.split('.')[0]):
+                with self.assertRaises(TokenError):
+                    AccessToken(candidate)
+
+    def test_access_token_rejects_expired_and_refresh_types(self):
+        from datetime import timedelta
+        from rest_framework_simplejwt.tokens import RefreshToken
+        from rest_framework_simplejwt.exceptions import TokenError
+        expired = AccessToken.for_user(self.user)
+        expired.set_exp(lifetime=timedelta(seconds=-60))
+        for candidate in (str(expired), str(RefreshToken.for_user(self.user))):
+            with self.assertRaises(TokenError):
+                AccessToken(candidate)
