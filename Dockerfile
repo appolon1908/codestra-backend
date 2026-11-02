@@ -15,6 +15,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/home/app/.local/bin:${PATH}"
 RUN apk add --no-cache curl cairo libjpeg-turbo libpq libstdc++ libxml2 libxslt \
     && python -m pip uninstall --yes pip wheel setuptools \
+    && rm -rf /usr/local/lib/python3.11/ensurepip \
     && addgroup -S app \
     && adduser -S -G app -h /home/app app
 COPY --from=build /install /usr/local

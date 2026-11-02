@@ -32,8 +32,16 @@ jobs:
           proof = json.loads(Path('governance/legacy-dependency-retirement.json').read_text())
           assert not installed.intersection(proof['exclusive_baseline_closure']), 'Retired unsupported dependency closure reintroduced'
           assert set(proof['retained_shared_baseline']).issubset(installed), 'Shared application dependency missing'
-          pins = sorted({row['name'] + '==' + row['version'] for row in rows})
-          Path(os.environ['RUNNER_TEMP'], 'runtime-installed.txt').write_text('\n'.join(pins) + '\n')
+          versions = {}
+          for row in rows:
+              versions.setdefault(normalize(row['name']), set()).add(row['version'])
+          # Audit every distinct installed/vendor version; pip-audit rejects conflicting
+          # versions in one input file, so partition without dropping any version.
+          groups = max(map(len, versions.values()))
+          for index in range(groups):
+              pins = [name + '==' + sorted(values)[index] for name, values in sorted(versions.items()) if len(values) > index]
+              Path(os.environ['RUNNER_TEMP'], f'runtime-installed-{index}.txt').write_text('\n'.join(pins) + '\n')
+          print('Distinct audited package/version identities:', sum(map(len, versions.values())))
           print('Actual installed runtime distributions:', len(rows))
           print('PACKAGE_GRAPH_JSON=' + json.dumps(rows, sort_keys=True))
           PYBOUNDARY
@@ -43,8 +51,12 @@ jobs:
           set -euo pipefail
           python -m venv "$RUNNER_TEMP/image-audit-venv"
           "$RUNNER_TEMP/image-audit-venv/bin/pip" install pip-audit==2.10.0
-          "$RUNNER_TEMP/image-audit-venv/bin/pip-audit" --no-deps --disable-pip \
-            --requirement "$RUNNER_TEMP/runtime-installed.txt"
+          audit_status=0
+          for pins in "$RUNNER_TEMP"/runtime-installed-*.txt; do
+            "$RUNNER_TEMP/image-audit-venv/bin/pip-audit" --no-deps --disable-pip \
+              --requirement "$pins" || audit_status=1
+          done
+          exit "$audit_status"
       - name: Verify official scanner and scan full image
         shell: bash
         run: |

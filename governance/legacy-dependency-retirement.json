@@ -53,6 +53,14 @@
       "index.json": "sha256:09d17d5e4c16d0a7a1eea690bcb7c6ab8616b211f8421e429e97c1bef5bd0ed2",
       "amd64-manifest.json": "sha256:792eb538bc2bd4c13f05ace04d448c4c07e5e4f9babf23957ebf005d5a72d744",
       "amd64-config.json": "sha256:44c08198793074dcc111e82cc55999b01eb52a0883ab3844a7d68fb97cef6602"
+    },
+    "build_only_bootstrap_removed_from_runtime": {
+      "layer_digest": "sha256:91d2cc06dca10cca950bce1470a72ac225a28af0bf2ecb656f8c56670d8e48b2",
+      "physically_verified_bundled_files": [
+        "usr/local/lib/python3.11/ensurepip/_bundled/pip-24.0-py3-none-any.whl",
+        "usr/local/lib/python3.11/ensurepip/_bundled/setuptools-79.0.1-py3-none-any.whl"
+      ],
+      "reason": "Final runtime has a complete checked dependency installation; bundled installer archives retain vulnerable obsolete dependencies and are build tooling, not application runtime requirements."
     }
   },
   "production_activation_authorized": false,
