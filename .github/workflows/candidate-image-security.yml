@@ -37,3 +37,32 @@ jobs:
                   print(json.dumps({'secret_location': {key: finding.get(key) for key in ('RuleID', 'StartLine', 'EndLine', 'Severity')}}, sort_keys=True))
           PYREPORT
           exit "$scan_status"
+  auth-source-baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: source_test
+          POSTGRES_USER: source_test
+          POSTGRES_PASSWORD: disposable-source-test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U source_test -d source_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - run: docker build --tag source-auth-baseline .
+      - name: Exercise auth with disposable PostgreSQL and mocked provider
+        run: |
+          docker run --rm --network host --entrypoint python \
+            --env SECRET_KEY=disposable-source-test-signing-key-not-production \
+            --env DEBUG=False --env POSTGRES_DB=source_test \
+            --env POSTGRES_USER=source_test --env POSTGRES_PASS=disposable-source-test \
+            --env PG_HOST=127.0.0.1 --env PG_PORT=5432 \
+            source-auth-baseline manage.py test auth_app --noinput --verbosity 2
