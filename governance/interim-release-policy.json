@@ -18,6 +18,16 @@
       "context": "deploy-readiness / deploy-readiness / secret-scan",
       "integration_id": 15368,
       "workflow": ".github/workflows/codestra-deploy-readiness.yml"
+    },
+    {
+      "context": "auth-source-baseline",
+      "integration_id": 15368,
+      "workflow": ".github/workflows/candidate-image-security.yml"
+    },
+    {
+      "context": "candidate-image-security",
+      "integration_id": 15368,
+      "workflow": ".github/workflows/candidate-image-security.yml"
     }
   ],
   "replaces_contexts": [

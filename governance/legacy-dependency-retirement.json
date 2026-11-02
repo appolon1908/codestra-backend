@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "purpose": "source-only security dependency retirement and official runtime refresh",
+  "reviewed_source_sha": "2bdb6cf07a1f5c1d54c852e9d83c82b9fb2b15ca",
+  "actual_runtime_metadata_job": 125419470450,
+  "actual_runtime_package_count": 313,
+  "actual_runtime_metadata_sha256": "19f56c68f548083deeebd048c63a873db66c475db4f86c4e4b24022526aef720",
+  "actual_baseline_plone_app_layout": "6.0.2",
+  "retired_direct_requirement": [
+    "Solgema.fullcalendar==2.3.6"
+  ],
+  "exclusive_baseline_closure": [
+    "plone-app-blob",
+    "plone-app-collection",
+    "plone-app-folder",
+    "plone-app-imaging",
+    "plone-app-widgets",
+    "plone-formwidget-autocomplete",
+    "plone-formwidget-contenttree",
+    "products-archetypes",
+    "products-atcontenttypes",
+    "products-cmfformcontroller",
+    "products-validation",
+    "products-zsqlmethods",
+    "solgema-fullcalendar",
+    "zdaemon",
+    "zeo",
+    "zodb3"
+  ],
+  "fixed_dependency_unavailable_for_current_python": {
+    "package": "Products.ATContentTypes",
+    "installed": "3.0.4",
+    "fixed": "3.0.6",
+    "requires_python": "==2.7.*",
+    "advisory": "CVE-2022-23599 / PYSEC-2022-21",
+    "primary_release": "https://pypi.org/project/Products.ATContentTypes/3.0.6/"
+  },
+  "owned_source_review": {
+    "immutable_files_verified": 301,
+    "references_outside_requirements": [],
+    "dynamic_plugin_loading": false
+  },
+  "official_python_image": {
+    "registry": "registry-1.docker.io",
+    "official_repository": "library/python",
+    "tag": "3.11-alpine3.24",
+    "index_digest": "sha256:09d17d5e4c16d0a7a1eea690bcb7c6ab8616b211f8421e429e97c1bef5bd0ed2",
+    "amd64_digest": "sha256:792eb538bc2bd4c13f05ace04d448c4c07e5e4f9babf23957ebf005d5a72d744",
+    "activation_authorized": false,
+    "python_version": "3.11.18",
+    "amd64_config_digest": "sha256:44c08198793074dcc111e82cc55999b01eb52a0883ab3844a7d68fb97cef6602",
+    "physical_artifacts": {
+      "index.json": "sha256:09d17d5e4c16d0a7a1eea690bcb7c6ab8616b211f8421e429e97c1bef5bd0ed2",
+      "amd64-manifest.json": "sha256:792eb538bc2bd4c13f05ace04d448c4c07e5e4f9babf23957ebf005d5a72d744",
+      "amd64-config.json": "sha256:44c08198793074dcc111e82cc55999b01eb52a0883ab3844a7d68fb97cef6602"
+    },
+    "build_only_bootstrap_removed_from_runtime": {
+      "layer_digest": "sha256:91d2cc06dca10cca950bce1470a72ac225a28af0bf2ecb656f8c56670d8e48b2",
+      "physically_verified_bundled_files": [
+        "usr/local/lib/python3.11/ensurepip/_bundled/pip-24.0-py3-none-any.whl",
+        "usr/local/lib/python3.11/ensurepip/_bundled/setuptools-79.0.1-py3-none-any.whl"
+      ],
+      "reason": "Final runtime has a complete checked dependency installation; bundled installer archives retain vulnerable obsolete dependencies and are build tooling, not application runtime requirements."
+    }
+  },
+  "production_activation_authorized": false,
+  "production_database_reconciliation_authorized": false,
+  "retained_shared_baseline": {
+    "zope-interface": "8.7",
+    "twisted": "24.11.0",
+    "celery": "5.4.0",
+    "django": "5.1.4",
+    "channels": "4.2.0"
+  }
+}

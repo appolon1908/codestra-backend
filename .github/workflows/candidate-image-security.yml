@@ -1,0 +1,109 @@
+name: Candidate image security
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  candidate-image-security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Build source candidate without publishing
+        run: docker build --tag source-security-candidate .
+      - name: Inventory and verify the approved runtime dependency boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network none --entrypoint python source-security-candidate \
+            -c 'import importlib.metadata as m,json; print(json.dumps([{ "name":d.metadata["Name"], "version":d.version, "requires":d.requires or [], "entry_points":[{"group":e.group,"name":e.name,"value":e.value} for e in d.entry_points], "top_level":d.read_text("top_level.txt") or ""} for d in m.distributions()],sort_keys=True))' \
+            > "$RUNNER_TEMP/runtime-metadata.json"
+          python - <<'PYBOUNDARY'
+          import json, os, re
+          from pathlib import Path
+          rows = json.loads(Path(os.environ['RUNNER_TEMP'], 'runtime-metadata.json').read_text())
+          normalize = lambda name: re.sub(r'[-_.]+', '-', name).lower()
+          installed = {normalize(row['name']) for row in rows}
+          proof = json.loads(Path('governance/legacy-dependency-retirement.json').read_text())
+          assert not installed.intersection(proof['exclusive_baseline_closure']), 'Retired unsupported dependency closure reintroduced'
+          assert set(proof['retained_shared_baseline']).issubset(installed), 'Shared application dependency missing'
+          versions = {}
+          for row in rows:
+              versions.setdefault(normalize(row['name']), set()).add(row['version'])
+          # Audit every distinct installed/vendor version; pip-audit rejects conflicting
+          # versions in one input file, so partition without dropping any version.
+          groups = max(map(len, versions.values()))
+          for index in range(groups):
+              pins = [name + '==' + sorted(values)[index] for name, values in sorted(versions.items()) if len(values) > index]
+              Path(os.environ['RUNNER_TEMP'], f'runtime-installed-{index}.txt').write_text('\n'.join(pins) + '\n')
+          print('Distinct audited package/version identities:', sum(map(len, versions.values())))
+          print('Actual installed runtime distributions:', len(rows))
+          print('PACKAGE_GRAPH_JSON=' + json.dumps(rows, sort_keys=True))
+          PYBOUNDARY
+      - name: Audit every installed runtime distribution without dependency substitution
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv "$RUNNER_TEMP/image-audit-venv"
+          "$RUNNER_TEMP/image-audit-venv/bin/pip" install pip-audit==2.10.0
+          audit_status=0
+          for pins in "$RUNNER_TEMP"/runtime-installed-*.txt; do
+            "$RUNNER_TEMP/image-audit-venv/bin/pip-audit" --no-deps --disable-pip \
+              --requirement "$pins" || audit_status=1
+          done
+          exit "$audit_status"
+      - name: Verify official scanner and scan full image
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 https://github.com/aquasecurity/trivy/releases/download/v0.72.0/trivy_0.72.0_Linux-64bit.tar.gz -o "$RUNNER_TEMP/trivy.tar.gz"
+          echo "bbb64b9695866ce4a7a8f5c9592002c5961cab378577fa3f8a040df362b9b2ea  $RUNNER_TEMP/trivy.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/trivy.tar.gz" -C "$RUNNER_TEMP" trivy
+          set +e
+          "$RUNNER_TEMP/trivy" image --severity HIGH,CRITICAL --exit-code 1 --format json --output "$RUNNER_TEMP/image-security.json" source-security-candidate
+          scan_status=$?
+          set -e
+          python - <<'PYREPORT'
+          import json, os
+          report = json.load(open(os.path.join(os.environ['RUNNER_TEMP'], 'image-security.json')))
+          for result in report.get('Results', []):
+              for finding in result.get('Vulnerabilities', []):
+                  print(json.dumps({'Target': result.get('Target'), **{key: finding.get(key) for key in ('VulnerabilityID', 'PkgName', 'InstalledVersion', 'FixedVersion', 'Severity')}}, sort_keys=True))
+              for finding in result.get('Secrets', []):
+                  print(json.dumps({'secret_location': {key: finding.get(key) for key in ('RuleID', 'StartLine', 'EndLine', 'Severity')}}, sort_keys=True))
+          PYREPORT
+          exit "$scan_status"
+  auth-source-baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: source_test
+          POSTGRES_USER: source_test
+          POSTGRES_PASSWORD: disposable-source-test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U source_test -d source_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - run: docker build --tag source-auth-baseline .
+      - name: Exercise auth with disposable PostgreSQL and mocked provider
+        run: |
+          docker run --rm --network host --entrypoint python \
+            --env SECRET_KEY=disposable-source-test-signing-key-not-production \
+            --env DEBUG=False --env POSTGRES_DB=source_test \
+            --env POSTGRES_USER=source_test --env POSTGRES_PASS=disposable-source-test \
+            --env PG_HOST=127.0.0.1 --env PG_PORT=5432 \
+            source-auth-baseline manage.py test auth_app --noinput --verbosity 2
